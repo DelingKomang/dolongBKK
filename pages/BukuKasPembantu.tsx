@@ -197,8 +197,93 @@ const BukuKasPembantu: React.FC<BukuKasPembantuProps> = ({ bkpData, onSubmit, on
       window.print();
   };
 
+  const printStyles = `
+      @media print {
+        @page {
+            size: landscape;
+            margin: 10mm;
+        }
+        body * {
+            visibility: hidden;
+        }
+        html, body, #root {
+            height: auto !important;
+            overflow: visible !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        #printable-area {
+            visibility: visible;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: white !important;
+            color: black !important;
+            display: block !important;
+        }
+        #printable-area * {
+            visibility: visible;
+        }
+        
+        /* Hide Non-Print elements */
+        .no-print {
+            display: none !important;
+        }
+
+        /* Typography & Colors Overrides */
+        .text-white, .text-gray-300, .text-gray-400, .text-blue-200, .text-gray-500, .text-green-400, .text-red-400, .text-sky-400, .text-teal-400 {
+            color: black !important;
+        }
+        .bg-gray-900, .bg-gray-800, .bg-gray-700, .bg-gray-800\/50, .bg-blue-900\/20 {
+            background-color: transparent !important;
+            border: none !important;
+            color: black !important;
+            box-shadow: none !important;
+        }
+        .border-gray-800, .border-gray-700, .border-blue-800 {
+            border-color: #000 !important;
+        }
+        
+        /* Table Specifics */
+        table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            font-size: 10px;
+        }
+        th, td {
+            border: 1px solid black !important;
+            padding: 4px 6px !important;
+            color: black !important;
+        }
+        thead th {
+             background-color: #f3f4f6 !important;
+             -webkit-print-color-adjust: exact;
+             color: black !important;
+        }
+        tr {
+            page-break-inside: avoid;
+        }
+        
+        .overflow-x-auto {
+            overflow: visible !important;
+        }
+        
+        /* Signatures */
+        .signature-section {
+            display: flex !important;
+            justify-content: space-between;
+            margin-top: 30px;
+            page-break-inside: avoid;
+        }
+      }
+    `;
+
   return (
     <div className="bg-gray-900 p-4 sm:p-6 rounded-lg shadow-xl border border-gray-800 space-y-4" id="printable-area">
+      <style>{printStyles}</style>
       {notification && (
          <div className="no-print">
             <Notification {...notification} onClose={() => setNotification(null)} />
@@ -206,7 +291,7 @@ const BukuKasPembantu: React.FC<BukuKasPembantuProps> = ({ bkpData, onSubmit, on
       )}
       
        {/* Print Only Header */}
-       <div className="hidden print:block text-center mb-8 text-black border-b border-black pb-4">
+       <div className="hidden print:block text-center mb-6 text-black border-b border-black pb-4">
             <h2 className="text-xl font-bold uppercase">BUKU KAS PEMBANTU (BKP)</h2>
             <p className="text-sm">Desa Adat Bacol Bigalow</p>
             <p className="text-xs mt-1">Dicetak pada: {new Date().toLocaleDateString('id-ID')}</p>
@@ -270,6 +355,20 @@ const BukuKasPembantu: React.FC<BukuKasPembantuProps> = ({ bkpData, onSubmit, on
             <Printer size={18} />
             <span>Cetak BKP</span>
         </button>
+      </div>
+      
+      {/* Signature Section for Print */}
+      <div className="hidden signature-section text-black text-sm">
+          <div className="text-center w-1/3">
+              <p>Mengetahui,</p>
+              <p className="mb-16">Bendesa Adat</p>
+              <p className="font-bold underline">Gusde Bacol</p>
+          </div>
+          <div className="text-center w-1/3">
+              <p>Basangalas, {new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}</p>
+              <p className="mb-16">Juru Raksa</p>
+              <p className="font-bold underline">I Gede Bentar</p>
+          </div>
       </div>
 
       <div className="no-print">
