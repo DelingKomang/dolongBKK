@@ -23,7 +23,7 @@ const BkpTable: React.FC<BkpTableProps> = ({ data, onEdit, onDelete }) => {
             <th scope="col" className="px-4 py-3 text-right">Debet (Penerimaan)</th>
             <th scope="col" className="px-4 py-3 text-right">Kredit (Pengeluaran)</th>
             <th scope="col" className="px-4 py-3 text-right">Saldo</th>
-            <th scope="col" className="px-4 py-3 text-center">Aksi</th>
+            <th scope="col" className="px-4 py-3 text-center no-print">Aksi</th>
           </tr>
         </thead>
         <tbody>
@@ -40,7 +40,7 @@ const BkpTable: React.FC<BkpTableProps> = ({ data, onEdit, onDelete }) => {
               <td className="px-4 py-4 text-right text-green-400">{formatCurrency(item.debet)}</td>
               <td className="px-4 py-4 text-right text-red-400">{formatCurrency(item.kredit)}</td>
               <td className="px-4 py-4 text-right text-white font-medium">{formatCurrency(item.saldo)}</td>
-              <td className="px-4 py-4 text-center">
+              <td className="px-4 py-4 text-center no-print">
                  <div className="flex justify-center items-center gap-2">
                     <button onClick={() => onEdit(item.id)} className="text-sky-400 hover:text-sky-300 p-1 rounded-md hover:bg-sky-500/10 transition-colors" title="Edit">
                         <Pencil size={16} />

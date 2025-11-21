@@ -9,8 +9,6 @@ export const SIDEBAR_MENU: SidebarMenuItem[] = [
   { name: 'Buku Kas Umum', icon: Book },
   { name: 'Buku Kas Pembantu', icon: BookCopy },
   { name: 'Jurnal Umum', icon: ClipboardList },
-  { name: 'Peminjam', icon: FileText },
-  { name: 'Setoran', icon: FileText },
   { name: 'Saldo Akhir', icon: BarChart2 },
   { name: 'Rekonsiliasi', icon: Repeat },
   { name: 'Laporan Rekonsiliasi Akhir', icon: FileCheck2 },

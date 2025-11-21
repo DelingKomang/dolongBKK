@@ -5,7 +5,7 @@ import type { BkuData } from '../types';
 import Pagination from '../components/bku/Pagination';
 import BkuFormModal from '../components/bku/BkuFormModal';
 import ConfirmationModal from '../components/shared/ConfirmationModal';
-import { Plus, Search, Download, Upload } from 'lucide-react';
+import { Plus, Search, Download, Upload, Printer } from 'lucide-react';
 import Notification from '../components/shared/Notification';
 
 declare const XLSX: any;
@@ -172,11 +172,26 @@ const BukuKasUmum: React.FC<BukuKasUmumProps> = ({ bkuData, onSubmit, onDelete }
       e.target.value = '';
   };
 
+  const handlePrint = () => {
+      window.print();
+  };
+
   return (
-    <div className="bg-gray-900 p-4 sm:p-6 rounded-lg shadow-xl border border-gray-800 space-y-4">
-      {notification && <Notification {...notification} onClose={() => setNotification(null)} />}
+    <div className="bg-gray-900 p-4 sm:p-6 rounded-lg shadow-xl border border-gray-800 space-y-4" id="printable-area">
+      {notification && (
+        <div className="no-print">
+            <Notification {...notification} onClose={() => setNotification(null)} />
+        </div>
+      )}
       
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+      {/* Print Only Header */}
+      <div className="hidden print:block text-center mb-8 text-black border-b border-black pb-4">
+            <h2 className="text-xl font-bold uppercase">BUKU KAS UMUM (BKU)</h2>
+            <p className="text-sm">Desa Adat Bacol Bigalow</p>
+            <p className="text-xs mt-1">Dicetak pada: {new Date().toLocaleDateString('id-ID')}</p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 no-print">
         <h2 className="text-xl font-semibold text-white">Buku Kas Umum</h2>
         <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap justify-end">
             <div className="relative w-full sm:w-64">
@@ -219,29 +234,44 @@ const BukuKasUmum: React.FC<BukuKasUmumProps> = ({ bkuData, onSubmit, onDelete }
 
       <BkuTable data={paginatedData} onEdit={handleEdit} onDelete={handleDeleteClick} />
       
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages || 1}
-        onPageChange={handlePageChange}
-      />
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 no-print pt-4 border-t border-gray-800">
+        <div className="w-full sm:w-auto">
+            <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages || 1}
+                onPageChange={handlePageChange}
+            />
+        </div>
+        <button
+            onClick={handlePrint}
+            className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300 shadow-lg"
+        >
+            <Printer size={18} />
+            <span>Cetak BKU</span>
+        </button>
+      </div>
 
-      <BkuFormModal 
-        isOpen={isModalOpen}
-        onClose={() => {
-            setIsModalOpen(false);
-            setEditingEntry(null);
-        }}
-        onSubmit={handleFormSubmit}
-        entryToEdit={editingEntry}
-      />
+      <div className="no-print">
+        <BkuFormModal 
+            isOpen={isModalOpen}
+            onClose={() => {
+                setIsModalOpen(false);
+                setEditingEntry(null);
+            }}
+            onSubmit={handleFormSubmit}
+            entryToEdit={editingEntry}
+        />
+      </div>
       
-      <ConfirmationModal
-        isOpen={isConfirmModalOpen}
-        onClose={() => setIsConfirmModalOpen(false)}
-        onConfirm={confirmDelete}
-        title="Konfirmasi Hapus"
-        message="Apakah Anda yakin ingin menghapus data transaksi ini? Tindakan ini tidak dapat dibatalkan."
-      />
+      <div className="no-print">
+        <ConfirmationModal
+            isOpen={isConfirmModalOpen}
+            onClose={() => setIsConfirmModalOpen(false)}
+            onConfirm={confirmDelete}
+            title="Konfirmasi Hapus"
+            message="Apakah Anda yakin ingin menghapus data transaksi ini? Tindakan ini tidak dapat dibatalkan."
+        />
+      </div>
     </div>
   );
 };

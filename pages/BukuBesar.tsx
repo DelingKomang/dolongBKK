@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import type { JuDisplayRow, BkuData, BkpData } from '../types';
 import { formatCurrency, formatDate, numberToWords } from '../utils/formatter';
-import { Search, Plus, Trash2, Save, ArrowDownLeft, ArrowUpRight, Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { Search, Plus, Trash2, Save, ArrowDownLeft, ArrowUpRight, Download, FileSpreadsheet, Upload, BookOpen, Printer } from 'lucide-react';
 import Notification from '../components/shared/Notification';
 import Modal from '../components/shared/Modal';
 
@@ -30,6 +30,32 @@ interface NotaItem {
     price: number;
     total: number;
 }
+
+// Standard Reference for Village Account Codes (Permendagri 20)
+const REFERENSI_REKENING = [
+    { code: '022.22.1', name: 'Bantuan Keuangan dari APBD Provinsi' },
+    { code: '022.22.2', name: 'Bantuan Keuangan dari APBD Kab/Kota' },
+    { code: '5.1.1.01', name: 'Insentif Kelian Adat' },
+    { code: '5.1.1.02', name: 'Insentif Prajuru Adat' },
+    { code: '5.1.1.03', name: 'Insentif Admin Adat' },
+    { code: '5.1.1.04', name: 'Jaminan Sosial Prajuru Adat' },
+    { code: '5.1.2.01', name: 'Belanja Alat Tulis Kantor (ATK)' },
+    { code: '5.1.2.02', name: 'Belanja Benda Pos & Materai' },
+    { code: '5.1.2.03', name: 'Belanja Alat Listrik & Elektronik' },
+    { code: '5.1.2.04', name: 'Belanja Peralatan Kebersihan' },
+    { code: '5.1.2.05', name: 'Belanja Cetak & Penggandaan' },
+    { code: '5.1.2.06', name: 'Belanja Makan & Minum Rapat' },
+    { code: '5.1.2.07', name: 'Belanja Pakaian Dinas & Atribut' },
+    { code: '5.1.2.08', name: 'Belanja Perjalanan Dinas' },
+    { code: '5.1.2.09', name: 'Belanja Pemeliharaan Gedung & Kantor' },
+    { code: '5.1.3.01', name: 'Belanja Pecalang' },
+    { code: '5.1.3.02', name: 'Belanja Pakis' },
+    { code: '5.1.3.03', name: 'Belanja Modal Gedung & Bangunan' },
+    { code: '5.1.3.04', name: 'Belanja Modal Jalan, Irigasi & Jaringan' },
+    { code: '5.1.4.01', name: 'Belanja Tak Terduga' },
+    { code: '6.1.1.01', name: 'Penerimaan Pembiayaan' },
+    { code: '6.2.1.01', name: 'Pengeluaran Pembiayaan' }
+];
 
 const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkpSubmit, onDelete }) => {
     // --- LEDGER VIEW STATE ---
@@ -65,12 +91,35 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
 
     // --- DERIVED DATA ---
 
+    // Combine static standard codes with any custom codes used in history
     const availableCodes = useMemo(() => {
-        const codes = new Set<string>();
-        entries.forEach(e => e.kodeRekening && codes.add(e.kodeRekening));
-        bkuData.forEach(b => b.kode && codes.add(b.kode));
-        return Array.from(codes).sort();
-    }, [entries, bkuData]);
+        const map = new Map<string, string>();
+        
+        // 1. Add Standard Codes
+        REFERENSI_REKENING.forEach(ref => {
+            map.set(ref.code, ref.name);
+        });
+
+        // 2. Add codes from history (BKU) if not exists
+        bkuData.forEach(b => {
+            if (b.kode && !map.has(b.kode)) {
+                map.set(b.kode, 'Kode Historis');
+            }
+        });
+
+        return Array.from(map.entries())
+            .map(([code, name]) => ({ code, name }))
+            .sort((a, b) => a.code.localeCompare(b.code));
+    }, [bkuData]);
+
+    // Identify selected code description for feedback
+    const selectedCodeDescription = useMemo(() => {
+        if(!formKode) return '';
+        // Try to match exact code
+        const cleanCode = formKode.split(' - ')[0].trim();
+        const found = availableCodes.find(c => c.code === cleanCode);
+        return found ? found.name : '';
+    }, [formKode, availableCodes]);
 
     const availableCategories = useMemo(() => {
         const cats = new Set<string>();
@@ -108,9 +157,12 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
 
         const numericAmount = Number(formAmount);
         
+        // Clean the code (remove description if selected from dropdown)
+        const cleanKode = formKode.split(' - ')[0].trim();
+
         const newData: Omit<BkuData, 'id' | 'saldo'> = {
             tanggal: formDate,
-            kode: formKode,
+            kode: cleanKode,
             kategori: formKategori, // Save Kategori to BKU
             uraian: generatedUraian,
             penerimaan: formType === 'Penerimaan' ? numericAmount : 0,
@@ -156,10 +208,10 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
         };
         onBkpSubmit(bkpEntry);
 
-        // 3. Export Excel
-        exportKwitansiToExcel(bkpEntry, pendingTx.penerimaan);
+        // 3. Export Excel (Disabled auto download)
+        // exportKwitansiToExcel(bkpEntry, pendingTx.penerimaan);
 
-        setNotification({ message: 'Data berhasil disimpan ke BKU & BKP, serta diunduh.', type: 'success' });
+        setNotification({ message: 'Data berhasil disimpan ke BKU & BKP.', type: 'success' });
         setIsKwitansiModalOpen(false);
         setPendingTx(null);
     };
@@ -199,12 +251,16 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
             }
         }
 
-        // 3. Export Excel
-        exportNotaToExcel(notaItems, pendingTx, notaBukti);
+        // 3. Export Excel (Disabled auto download)
+        // exportNotaToExcel(notaItems, pendingTx, notaBukti);
 
-        setNotification({ message: 'Semua rincian Nota berhasil disimpan ke BKP & BKU, serta diunduh.', type: 'success' });
+        setNotification({ message: 'Semua rincian Nota berhasil disimpan ke BKP & BKU.', type: 'success' });
         setIsNotaModalOpen(false);
         setPendingTx(null);
+    };
+
+    const handlePrint = () => {
+        window.print();
     };
 
     // --- EXCEL FUNCTIONS (DOCUMENTS) ---
@@ -399,8 +455,54 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
         return { target, cleanDesc };
     };
 
+    // Specific Styles for printing the modals
+    const printStyles = `
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            /* Display Kwitansi if printing */
+            #print-kwitansi, #print-kwitansi * {
+                visibility: visible;
+            }
+            #print-kwitansi {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                background-color: #fff9c4 !important; /* Force yellow background */
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                padding: 20px;
+                margin: 0;
+                z-index: 9999;
+            }
+
+            /* Display Nota if printing */
+            #print-nota, #print-nota * {
+                visibility: visible;
+            }
+            #print-nota {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                background-color: white !important;
+                padding: 20px;
+                margin: 0;
+                z-index: 9999;
+            }
+            
+            /* Hide buttons in print view */
+            .no-print-modal {
+                display: none !important;
+            }
+        }
+    `;
+
     return (
         <div className="space-y-8">
+            <style>{printStyles}</style>
             {notification && <Notification {...notification} onClose={() => setNotification(null)} />}
 
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-900 p-6 rounded-xl shadow-xl border border-gray-800">
@@ -558,12 +660,25 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                                     value={formKode}
                                     onChange={(e) => setFormKode(e.target.value)}
                                     className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                                    placeholder="Pilih atau ketik kode..."
+                                    placeholder="Contoh: 5.1.2.01"
                                     required
+                                    autoComplete="off"
                                 />
                                 <datalist id="kode-list-modal">
-                                    {availableCodes.map(code => <option key={code} value={code} />)}
+                                    {availableCodes.map(item => (
+                                        <option key={item.code} value={`${item.code} - ${item.name}`} />
+                                    ))}
                                 </datalist>
+                                
+                                {/* Keterangan Kode Display */}
+                                <div className="mt-2 p-2 bg-gray-900/50 rounded border border-gray-700 text-sm min-h-[2.5rem] flex items-center gap-2">
+                                    <BookOpen size={16} className="text-teal-400"/>
+                                    {selectedCodeDescription ? (
+                                        <span className="text-teal-300 font-medium">{selectedCodeDescription}</span>
+                                    ) : (
+                                        <span className="text-gray-500 italic">Keterangan kode akan muncul di sini...</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                         <div className="space-y-4">
@@ -647,11 +762,11 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                 isOpen={isKwitansiModalOpen}
                 onClose={() => { setIsKwitansiModalOpen(false); setPendingTx(null); }}
                 title="Bukti Kwitansi Penerimaan"
-                className="max-w-2xl"
+                className="max-w-5xl"
             >
-                <div className="bg-[#fff9c4] text-black p-6 rounded-lg shadow-inner border-2 border-gray-300 font-serif relative">
+                <div id="print-kwitansi" className="bg-[#fff9c4] text-black p-6 rounded-lg shadow-inner border-2 border-gray-300 font-serif relative">
                      {/* Decoration */}
-                    <div className="absolute top-0 left-0 w-full h-4 bg-stripes-gray opacity-20"></div>
+                    <div className="absolute top-0 left-0 w-full h-4 bg-stripes-gray opacity-20 no-print-modal"></div>
 
                     <div className="text-center mb-6 border-b-2 border-black pb-2">
                         <h2 className="text-3xl font-bold uppercase tracking-widest">Kwitansi</h2>
@@ -696,11 +811,18 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
 
                 <div className="mt-6 flex justify-end gap-3">
                     <button 
+                        onClick={handlePrint}
+                        className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-colors"
+                    >
+                        <Printer size={18} />
+                        <span>Print Kwitansi</span>
+                    </button>
+                    <button 
                         onClick={handleKwitansiSubmit}
                         className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg shadow-md"
                     >
-                        <Download size={18} />
-                        <span>Simpan & Unduh Excel</span>
+                        <Save size={18} />
+                        <span>Simpan</span>
                     </button>
                 </div>
             </Modal>
@@ -713,7 +835,7 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                 className="max-w-4xl"
             >
                 <div className="space-y-4">
-                    <div className="bg-white text-black p-6 rounded-lg shadow border border-gray-300">
+                    <div id="print-nota" className="bg-white text-black p-6 rounded-lg shadow border border-gray-300">
                         <div className="flex justify-between items-start mb-4 border-b border-gray-300 pb-4">
                             <div>
                                 <h2 className="text-2xl font-bold text-black">NOTA BELANJA</h2>
@@ -742,7 +864,7 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                                     <th className="border border-gray-400 p-2 w-20">Qty</th>
                                     <th className="border border-gray-400 p-2 w-32">Harga</th>
                                     <th className="border border-gray-400 p-2 w-32">Jumlah</th>
-                                    <th className="border border-gray-400 p-2 w-10"></th>
+                                    <th className="border border-gray-400 p-2 w-10 no-print-modal"></th>
                                 </tr>
                             </thead>
                             <tbody className="text-black">
@@ -777,7 +899,7 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                                         <td className="border border-gray-400 p-2 text-right font-semibold">
                                             {formatCurrency(item.total)}
                                         </td>
-                                        <td className="border border-gray-400 p-2 text-center">
+                                        <td className="border border-gray-400 p-2 text-center no-print-modal">
                                             <button onClick={() => removeNotaItem(idx)} className="text-red-500 hover:text-red-700">
                                                 <Trash2 size={14} />
                                             </button>
@@ -789,12 +911,12 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                                 <tr className="bg-gray-100 font-bold">
                                     <td colSpan={4} className="border border-gray-400 p-2 text-right">TOTAL</td>
                                     <td className="border border-gray-400 p-2 text-right">{formatCurrency(notaTotal)}</td>
-                                    <td className="border border-gray-400"></td>
+                                    <td className="border border-gray-400 no-print-modal"></td>
                                 </tr>
                             </tfoot>
                         </table>
                         
-                         <div className="mt-2 flex justify-between items-center">
+                         <div className="mt-2 flex justify-between items-center no-print-modal">
                             <button onClick={addNotaItem} className="text-sm text-blue-600 hover:underline flex items-center gap-1 font-semibold">
                                 <Plus size={14}/> Tambah Baris
                             </button>
@@ -811,12 +933,19 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
 
                      <div className="flex justify-end gap-3 pt-4">
                         <button 
+                            onClick={handlePrint}
+                            className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-colors"
+                        >
+                            <Printer size={18} />
+                            <span>Print Nota</span>
+                        </button>
+                        <button 
                             onClick={handleNotaSubmit}
                             className={`flex items-center gap-2 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-all ${notaTotal === (pendingTx?.pengeluaran || 0) ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-500 cursor-not-allowed opacity-50'}`}
                             disabled={notaTotal !== (pendingTx?.pengeluaran || 0)}
                         >
-                            <FileSpreadsheet size={18} />
-                            <span>Simpan & Unduh Excel</span>
+                            <Save size={18} />
+                            <span>Simpan</span>
                         </button>
                     </div>
                 </div>
@@ -840,8 +969,8 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                             className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
                         >
                             <option value="">-- Pilih Kode Rekening --</option>
-                            {availableCodes.map(code => (
-                                <option key={code} value={code}>{code}</option>
+                            {availableCodes.map(item => (
+                                <option key={item.code} value={item.code}>{item.code} - {item.name}</option>
                             ))}
                         </select>
                     </div>

@@ -5,7 +5,7 @@ import { numberToWords, formatDate } from '../utils/formatter';
 import Modal from '../components/shared/Modal';
 import Spinner from '../components/shared/Spinner';
 import Notification from '../components/shared/Notification';
-import { Plus, Search, ChevronLeft, ChevronRight, Upload, Download } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, Upload, Download, Printer } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -188,6 +188,10 @@ const JurnalUmum: React.FC<JurnalUmumProps> = ({ entries, setEntries }) => {
         event.target.value = '';
     };
 
+    const handlePrint = () => {
+        window.print();
+    };
+
     const formatCurrency = (amount: number) => {
         return amount > 0 ? new Intl.NumberFormat('id-ID', {
             style: 'currency', currency: 'IDR', minimumFractionDigits: 0
@@ -197,30 +201,34 @@ const JurnalUmum: React.FC<JurnalUmumProps> = ({ entries, setEntries }) => {
     const terbilang = (num: number) => numberToWords(num) + ' Rupiah';
 
     return (
-         <div className="bg-gray-900 p-4 sm:p-6 rounded-lg shadow-xl border border-gray-800 space-y-4">
+         <div className="bg-gray-900 p-4 sm:p-6 rounded-lg shadow-xl border border-gray-800 space-y-4" id="printable-area">
             {isLoading && <Spinner />}
-            {notification && <Notification {...notification} onClose={() => setNotification(null)} />}
+            {notification && (
+                <div className="no-print">
+                    <Notification {...notification} onClose={() => setNotification(null)} />
+                </div>
+            )}
             <input type="file" ref={importFileRef} onChange={handleImport} accept=".xlsx, .xls" className="hidden" />
 
-            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
+            {/* Print Only Header */}
+            <div className="hidden print:block text-center mb-8 text-black border-b border-black pb-4">
+                 <h2 className="text-xl font-bold uppercase">Buku Jurnal Umum</h2>
+                 <p className="text-sm">Desa Adat Bacol Bigalow</p>
+            </div>
+
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 no-print">
                 <div>
                     <h2 className="text-2xl font-bold text-white">Jurnal Umum</h2>
                     <p className="text-gray-400">Catatan kronologis semua transaksi keuangan.</p>
                 </div>
                 <div className="flex flex-wrap gap-2 w-full lg:w-auto">
-                    <button onClick={() => importFileRef.current?.click()} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-md">
-                        <Upload className="w-5 h-5"/> <span>Impor Excel</span>
-                    </button>
-                    <button onClick={handleExport} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-md">
-                        <Download className="w-5 h-5"/> <span>Ekspor Excel</span>
-                    </button>
                     <button onClick={handleOpenModal} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-teal-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md">
                         <Plus className="w-5 h-5"/> <span>Buat Jurnal Baru</span>
                     </button>
                 </div>
             </div>
             
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4 no-print">
                  <p className="text-sm text-gray-400 hidden sm:block">
                     <span className="font-semibold text-sky-400">Tip Impor:</span> Kolom Excel: Tanggal, Kode Rekening, Uraian Debet, Uraian Kredit, Jumlah.
                 </p>
@@ -265,71 +273,86 @@ const JurnalUmum: React.FC<JurnalUmumProps> = ({ entries, setEntries }) => {
                 </table>
             </div>
 
-            <div className="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
-                <span className="text-sm text-gray-400">Halaman {currentPage} dari {pageCount}</span>
-                <div className="flex items-center gap-2">
-                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 bg-gray-800 rounded-md hover:bg-gray-700 disabled:opacity-50 text-white"><ChevronLeft className="w-5 h-5"/></button>
-                    <span className="font-semibold text-white px-2">{currentPage}</span>
-                    <button onClick={() => setCurrentPage(p => Math.min(pageCount, p + 1))} disabled={currentPage === pageCount} className="p-2 bg-gray-800 rounded-md hover:bg-gray-700 disabled:opacity-50 text-white"><ChevronRight className="w-5 h-5"/></button>
+            <div className="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4 no-print">
+                 <div className="flex gap-2 order-2 sm:order-1">
+                    <button onClick={() => importFileRef.current?.click()} className="flex items-center justify-center gap-2 bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors shadow-md text-sm">
+                        <Upload className="w-4 h-4"/> <span>Impor Excel</span>
+                    </button>
+                    <button onClick={handlePrint} className="flex items-center justify-center gap-2 bg-teal-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors shadow-md text-sm">
+                        <Printer className="w-4 h-4"/> <span>Cetak</span>
+                    </button>
+                    <button onClick={handleExport} className="flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-md text-sm">
+                        <Download className="w-4 h-4"/> <span>Ekspor Excel</span>
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-4 order-1 sm:order-2">
+                    <span className="text-sm text-gray-400">Halaman {currentPage} dari {pageCount}</span>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-2 bg-gray-800 rounded-md hover:bg-gray-700 disabled:opacity-50 text-white"><ChevronLeft className="w-5 h-5"/></button>
+                        <span className="font-semibold text-white px-2">{currentPage}</span>
+                        <button onClick={() => setCurrentPage(p => Math.min(pageCount, p + 1))} disabled={currentPage === pageCount} className="p-2 bg-gray-800 rounded-md hover:bg-gray-700 disabled:opacity-50 text-white"><ChevronRight className="w-5 h-5"/></button>
+                    </div>
                 </div>
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setModalOpen(false)} title="Jurnal Umum">
-                <form onSubmit={handleSave} className="space-y-4">
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                           <label htmlFor="date" className="block text-sm font-medium text-gray-300 mb-1">Tanggal Transaksi</label>
-                           <input type="date" id="date" value={formDate} onChange={e => setFormDate(e.target.value)} required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+            <div className="no-print">
+                <Modal isOpen={isModalOpen} onClose={() => setModalOpen(false)} title="Jurnal Umum">
+                    <form onSubmit={handleSave} className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                            <label htmlFor="date" className="block text-sm font-medium text-gray-300 mb-1">Tanggal Transaksi</label>
+                            <input type="date" id="date" value={formDate} onChange={e => setFormDate(e.target.value)} required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"/>
+                            </div>
+                            <div>
+                                <label htmlFor="id" className="block text-sm font-medium text-gray-300 mb-1">ID Transaksi (Otomatis)</label>
+                                <input type="text" id="id" value={`JU-${formDate.substring(5,7)}${formDate.substring(8,10)}-...`} readOnly className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-500 rounded-lg cursor-not-allowed"/>
+                            </div>
                         </div>
-                         <div>
-                            <label htmlFor="id" className="block text-sm font-medium text-gray-300 mb-1">ID Transaksi (Otomatis)</label>
-                            <input type="text" id="id" value={`JU-${formDate.substring(5,7)}${formDate.substring(8,10)}-...`} readOnly className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-500 rounded-lg cursor-not-allowed"/>
-                        </div>
-                    </div>
 
-                    <div>
-                        <label htmlFor="kodeRekening" className="block text-sm font-medium text-gray-300 mb-1">Kode Rekening</label>
-                        <input type="text" id="kodeRekening" value={formKodeRekening} onChange={e => setFormKodeRekening(e.target.value)} required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="e.g., 5.1.2.03"/>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                           <label htmlFor="uraianDebet" className="block text-sm font-medium text-gray-300 mb-1">Uraian Debet</label>
-                           <input type="text" id="uraianDebet" value={formUraianDebet} onChange={e => setFormUraianDebet(e.target.value)} required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="e.g., Beban Gaji"/>
+                            <label htmlFor="kodeRekening" className="block text-sm font-medium text-gray-300 mb-1">Kode Rekening</label>
+                            <input type="text" id="kodeRekening" value={formKodeRekening} onChange={e => setFormKodeRekening(e.target.value)} required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="e.g., 5.1.2.03"/>
                         </div>
-                        <div>
-                           <label htmlFor="uraianKredit" className="block text-sm font-medium text-gray-300 mb-1">Uraian Kredit</label>
-                           <input type="text" id="uraianKredit" value={formUraianKredit} onChange={e => setFormUraianKredit(e.target.value)} required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="e.g., Kas di Kas Daerah"/>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                            <label htmlFor="uraianDebet" className="block text-sm font-medium text-gray-300 mb-1">Uraian Debet</label>
+                            <input type="text" id="uraianDebet" value={formUraianDebet} onChange={e => setFormUraianDebet(e.target.value)} required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="e.g., Beban Gaji"/>
+                            </div>
+                            <div>
+                            <label htmlFor="uraianKredit" className="block text-sm font-medium text-gray-300 mb-1">Uraian Kredit</label>
+                            <input type="text" id="uraianKredit" value={formUraianKredit} onChange={e => setFormUraianKredit(e.target.value)} required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="e.g., Kas di Kas Daerah"/>
+                            </div>
                         </div>
-                    </div>
 
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label htmlFor="debet" className="block text-sm font-medium text-gray-300 mb-1">Debet (Rp)</label>
-                            <input type="number" id="debet" value={formAmount} onChange={e => setFormAmount(e.target.value === '' ? '' : Number(e.target.value))} required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="0"/>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label htmlFor="debet" className="block text-sm font-medium text-gray-300 mb-1">Debet (Rp)</label>
+                                <input type="number" id="debet" value={formAmount} onChange={e => setFormAmount(e.target.value === '' ? '' : Number(e.target.value))} required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500" placeholder="0"/>
+                            </div>
+                            <div>
+                                <label htmlFor="kredit" className="block text-sm font-medium text-gray-300 mb-1">Kredit (Rp)</label>
+                                <input type="number" id="kredit" value={formAmount} readOnly className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-500 rounded-lg cursor-not-allowed" placeholder="0"/>
+                            </div>
                         </div>
+                        
                         <div>
-                            <label htmlFor="kredit" className="block text-sm font-medium text-gray-300 mb-1">Kredit (Rp)</label>
-                            <input type="number" id="kredit" value={formAmount} readOnly className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-500 rounded-lg cursor-not-allowed" placeholder="0"/>
+                            {Number(formAmount) > 0 && <p className="text-sm text-teal-400 mt-1 italic">{terbilang(Number(formAmount))}</p>}
                         </div>
-                    </div>
-                    
-                    <div>
-                        {/* FIX: Explicitly convert formAmount to a number before comparison to fix TypeScript error. */}
-                        {Number(formAmount) > 0 && <p className="text-sm text-teal-400 mt-1 italic">{terbilang(Number(formAmount))}</p>}
-                    </div>
 
-                    <div className="p-3 bg-gray-700/50 border border-gray-600 rounded-lg">
-                        <p className="text-sm font-semibold text-gray-300">Preview Pencatatan:</p>
-                        <p className="text-sm text-white italic">{` (Pencatatan ${formUraianDebet || '...'})`}</p>
-                    </div>
+                        <div className="p-3 bg-gray-700/50 border border-gray-600 rounded-lg">
+                            <p className="text-sm font-semibold text-gray-300">Preview Pencatatan:</p>
+                            <p className="text-sm text-white italic">{` (Pencatatan ${formUraianDebet || '...'})`}</p>
+                        </div>
 
-                    <div className="pt-4 flex justify-end gap-3">
-                        <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-500 transition-colors">Batal</button>
-                        <button type="submit" className="px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition-colors shadow-sm">Simpan Jurnal</button>
-                    </div>
-                </form>
-            </Modal>
+                        <div className="pt-4 flex justify-end gap-3">
+                            <button type="button" onClick={() => setModalOpen(false)} className="px-4 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-500 transition-colors">Batal</button>
+                            <button type="submit" className="px-4 py-2 bg-teal-600 text-white font-semibold rounded-lg hover:bg-teal-700 transition-colors shadow-sm">Simpan Jurnal</button>
+                        </div>
+                    </form>
+                </Modal>
+            </div>
         </div>
     );
 };

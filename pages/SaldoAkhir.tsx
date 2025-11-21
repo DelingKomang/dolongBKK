@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import type { BkuTransaction } from '../types';
 import Modal from '../components/shared/Modal';
-import { Plus } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { numberToWords, formatCurrency } from '../utils/formatter';
 
 interface SaldoAkhirProps {
@@ -12,6 +13,11 @@ interface SaldoAkhirProps {
     setSaldoAwal: React.Dispatch<React.SetStateAction<number>>;
 }
 
+interface CategorySummary {
+    name: string;
+    total: number;
+}
+
 interface SaldoSummary {
     saldoAwal: number;
     totalPenerimaan: number;
@@ -19,6 +25,8 @@ interface SaldoSummary {
     totalDebetKumulatif: number;
     totalKreditKumulatif: number;
     saldoAkhirKas: number;
+    incomeByCategory: CategorySummary[];
+    expenseByCategory: CategorySummary[];
 }
 
 const SaldoAkhir: React.FC<SaldoAkhirProps> = ({ bkuTransactions, penyetoranPajak, setPenyetoranPajak, saldoAwal, setSaldoAwal }) => {
@@ -36,6 +44,29 @@ const SaldoAkhir: React.FC<SaldoAkhirProps> = ({ bkuTransactions, penyetoranPaja
         const totalKreditKumulatif = totalPengeluaran + penyetoranPajak;
         const saldoAkhirKas = totalDebetKumulatif - totalKreditKumulatif;
 
+        // Aggregate Categories
+        const incomeMap: Record<string, number> = {};
+        const expenseMap: Record<string, number> = {};
+
+        bkuTransactions.forEach(tx => {
+            const categoryName = tx.kategori || 'Lain-lain';
+            
+            if (tx.penerimaan > 0) {
+                incomeMap[categoryName] = (incomeMap[categoryName] || 0) + tx.penerimaan;
+            }
+            if (tx.pengeluaran > 0) {
+                expenseMap[categoryName] = (expenseMap[categoryName] || 0) + tx.pengeluaran;
+            }
+        });
+
+        const incomeByCategory = Object.entries(incomeMap)
+            .map(([name, total]) => ({ name, total }))
+            .sort((a, b) => b.total - a.total); // Sort highest first
+
+        const expenseByCategory = Object.entries(expenseMap)
+            .map(([name, total]) => ({ name, total }))
+            .sort((a, b) => b.total - a.total);
+
         return {
             saldoAwal,
             totalPenerimaan,
@@ -43,6 +74,8 @@ const SaldoAkhir: React.FC<SaldoAkhirProps> = ({ bkuTransactions, penyetoranPaja
             totalDebetKumulatif,
             totalKreditKumulatif,
             saldoAkhirKas,
+            incomeByCategory,
+            expenseByCategory
         };
 
     }, [bkuTransactions, penyetoranPajak, saldoAwal]);
@@ -71,8 +104,59 @@ const SaldoAkhir: React.FC<SaldoAkhirProps> = ({ bkuTransactions, penyetoranPaja
 
     const terbilang = (num: number) => numberToWords(num) + ' Rupiah';
 
+    // Helper Component for Detail Tables
+    const DetailTable = ({ title, data, type }: { title: string, data: CategorySummary[], type: 'income' | 'expense' }) => (
+        <div className="bg-gray-900 rounded-2xl p-6 shadow-lg border border-gray-800 flex-1">
+            <div className="flex items-center gap-3 mb-4">
+                <div className={`p-2 rounded-full ${type === 'income' ? 'bg-green-900/30' : 'bg-red-900/30'}`}>
+                    {type === 'income' ? <ArrowUpRight className="w-5 h-5 text-green-400" /> : <ArrowDownLeft className="w-5 h-5 text-red-400" />}
+                </div>
+                <h3 className="text-lg font-bold text-white">{title}</h3>
+            </div>
+            <div className="overflow-x-auto border border-gray-700 rounded-lg">
+                <table className="w-full text-sm text-left text-gray-400">
+                    <thead className="text-xs text-gray-300 uppercase bg-gray-800">
+                        <tr>
+                            <th className="px-4 py-3 w-10 text-center">No</th>
+                            <th className="px-4 py-3">Kategori</th>
+                            <th className="px-4 py-3 text-right">Jumlah</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {data.length === 0 ? (
+                            <tr>
+                                <td colSpan={3} className="px-4 py-6 text-center text-gray-500 italic">
+                                    Tidak ada data transaksi.
+                                </td>
+                            </tr>
+                        ) : (
+                            data.map((item, idx) => (
+                                <tr key={idx} className="bg-gray-900 border-b border-gray-800 hover:bg-gray-800/50">
+                                    <td className="px-4 py-3 text-center">{idx + 1}</td>
+                                    <td className="px-4 py-3 text-white font-medium">{item.name}</td>
+                                    <td className={`px-4 py-3 text-right font-semibold ${type === 'income' ? 'text-green-400' : 'text-red-400'}`}>
+                                        {formatCurrency(item.total)}
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                    <tfoot className="bg-gray-800 font-bold text-white">
+                        <tr>
+                            <td colSpan={2} className="px-4 py-3 text-right">Total</td>
+                            <td className="px-4 py-3 text-right">
+                                {formatCurrency(data.reduce((sum, item) => sum + item.total, 0))}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    );
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-8 animate-fade-in-up">
+            {/* Main Summary Table */}
             <div className="bg-gray-900 rounded-2xl p-6 shadow-lg border border-gray-800">
                 <h2 className="text-2xl font-bold text-white mb-6">Rekapitulasi Saldo Akhir Kas</h2>
                 <div className="overflow-x-auto border border-gray-700 rounded-lg">
@@ -135,6 +219,21 @@ const SaldoAkhir: React.FC<SaldoAkhirProps> = ({ bkuTransactions, penyetoranPaja
                 </div>
             </div>
 
+            {/* Detailed Category Tables */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <DetailTable 
+                    title="Rincian Penerimaan per Kategori" 
+                    data={summaryData.incomeByCategory} 
+                    type="income" 
+                />
+                <DetailTable 
+                    title="Rincian Pengeluaran per Kategori" 
+                    data={summaryData.expenseByCategory} 
+                    type="expense" 
+                />
+            </div>
+
+            {/* Modals */}
             <Modal isOpen={isPajakModalOpen} onClose={() => setIsPajakModalOpen(false)} title="Ubah Nilai Penyetoran Pajak">
                 <form onSubmit={handleSavePajak} className="space-y-4">
                     <div>
