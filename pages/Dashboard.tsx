@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { DollarSign, TrendingDown, Wallet, Calendar, Filter } from 'lucide-react';
+import { DollarSign, TrendingDown, Wallet, Calendar, Filter, Printer } from 'lucide-react';
 import type { BkuData, MonthlyData, CategoryData, Transaction } from '../types';
 import StatCard from '../components/dashboard/StatCard';
 import MonthlyBarChart from '../components/dashboard/MonthlyBarChart';
@@ -151,10 +151,81 @@ const Dashboard: React.FC<DashboardProps> = ({ bkuData }) => {
   const recentTransactions = allTransactions.slice(0, 5);
   const topTransactions = [...allTransactions].sort((a,b) => b.amount - a.amount).slice(0, 5);
 
+  const handlePrint = () => {
+      window.print();
+  };
+
+  const printStyles = `
+      @media print {
+        @page {
+            size: landscape;
+            margin: 10mm;
+        }
+        body * {
+            visibility: hidden;
+        }
+        html, body, #root {
+            height: auto !important;
+            overflow: visible !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        #printable-area {
+            visibility: visible;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: white !important;
+            color: black !important;
+            display: block !important;
+        }
+        #printable-area * {
+            visibility: visible;
+        }
+        
+        /* Hide Non-Print elements */
+        .no-print {
+            display: none !important;
+        }
+
+        /* Typography & Colors Overrides */
+        .text-white, .text-gray-300, .text-gray-400, .text-blue-200, .text-gray-500, .text-green-400, .text-red-400, .text-sky-400, .text-teal-400 {
+            color: black !important;
+        }
+        .bg-gray-900, .bg-gray-800, .bg-gray-700, .bg-gray-800\/50, .bg-blue-900\/20, .bg-teal-500\/20, .bg-green-500\/20, .bg-red-500\/20, .bg-sky-500\/20 {
+            background-color: transparent !important;
+            border: 1px solid #ccc !important;
+            color: black !important;
+            box-shadow: none !important;
+        }
+        .border-gray-800, .border-gray-700, .border-blue-800 {
+            border-color: #000 !important;
+        }
+        
+        /* Hide Scrollbars */
+        ::-webkit-scrollbar {
+            display: none;
+        }
+      }
+    `;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" id="printable-area">
+      <style>{printStyles}</style>
+
+       {/* Print Only Header */}
+       <div className="hidden print:block text-center mb-6 text-black border-b border-black pb-4">
+            <h2 className="text-xl font-bold uppercase">DASHBOARD KEUANGAN</h2>
+            <p className="text-sm">Desa Adat Bacol Bigalow</p>
+            <p className="text-sm">Tahun Anggaran {selectedYear}</p>
+            <p className="text-xs mt-1">Dicetak pada: {new Date().toLocaleDateString('id-ID')}</p>
+      </div>
+
       {/* Header & Filter */}
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-900 p-4 rounded-lg border border-gray-800 shadow-lg">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-900 p-4 rounded-lg border border-gray-800 shadow-lg no-print">
           <div className="flex items-center gap-2">
              <div className="bg-teal-500/20 p-2 rounded-full">
                 <TrendingDown className="h-6 w-6 text-teal-400" />
@@ -228,6 +299,17 @@ const Dashboard: React.FC<DashboardProps> = ({ bkuData }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
          <RecentActivity transactions={recentTransactions} />
          <TopTransactions transactions={topTransactions} />
+      </div>
+
+      {/* Print Button */}
+      <div className="flex justify-end mt-6 no-print">
+            <button
+                onClick={handlePrint}
+                className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-6 rounded-lg transition-colors duration-300 shadow-lg"
+            >
+                <Printer size={18} />
+                <span>Cetak Dashboard</span>
+            </button>
       </div>
     </div>
   );
