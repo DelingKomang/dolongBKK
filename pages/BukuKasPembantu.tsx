@@ -15,9 +15,10 @@ interface BukuKasPembantuProps {
   bkpData: BkpData[];
   onSubmit: (formData: Omit<BkpData, 'id' | 'saldo'>, id?: string) => void;
   onDelete: (id: string) => void;
+  onReplace: (data: BkpData[]) => void;
 }
 
-const BukuKasPembantu: React.FC<BukuKasPembantuProps> = ({ bkpData, onSubmit, onDelete }) => {
+const BukuKasPembantu: React.FC<BukuKasPembantuProps> = ({ bkpData, onSubmit, onDelete, onReplace }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -31,6 +32,10 @@ const BukuKasPembantu: React.FC<BukuKasPembantuProps> = ({ bkpData, onSubmit, on
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Import state
+  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -144,7 +149,15 @@ const BukuKasPembantu: React.FC<BukuKasPembantuProps> = ({ bkpData, onSubmit, on
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (!file) return;
+      if (file) {
+          setPendingFile(file);
+          setIsImportConfirmOpen(true);
+      }
+      e.target.value = '';
+  };
+
+  const confirmImport = () => {
+      if (!pendingFile) return;
 
       if (typeof XLSX === 'undefined') {
           setNotification({ message: 'Library Excel belum dimuat.', type: 'error' });
@@ -160,7 +173,7 @@ const BukuKasPembantu: React.FC<BukuKasPembantuProps> = ({ bkpData, onSubmit, on
               const worksheet = workbook.Sheets[sheetName];
               const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-              let count = 0;
+              const newEntries: BkpData[] = [];
               jsonData.forEach((row: any) => {
                   if (row['Tanggal'] && row['Uraian']) {
                       let dateStr = '';
@@ -171,26 +184,35 @@ const BukuKasPembantu: React.FC<BukuKasPembantuProps> = ({ bkpData, onSubmit, on
                            if (!isNaN(d.getTime())) dateStr = d.toISOString().split('T')[0];
                       }
 
-                      const newEntry: Omit<BkpData, 'id' | 'saldo'> = {
+                      const newEntry: BkpData = {
+                          id: `bkp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                           tanggal: dateStr || new Date().toISOString().split('T')[0],
                           bukti: row['Bukti'] || 'Imported',
                           kategori: row['Kategori'] || '',
                           uraian: row['Uraian'] || '',
                           debet: Number(row['Debet']) || 0,
-                          kredit: Number(row['Kredit']) || 0
+                          kredit: Number(row['Kredit']) || 0,
+                          saldo: 0 // recalculated later
                       };
-                      onSubmit(newEntry);
-                      count++;
+                      newEntries.push(newEntry);
                   }
               });
-              setNotification({ message: `${count} data berhasil diimpor ke BKP.`, type: 'success' });
+
+              if(newEntries.length > 0) {
+                  onReplace(newEntries);
+                  setNotification({ message: `${newEntries.length} data berhasil diimpor dan menggantikan data lama.`, type: 'success' });
+              } else {
+                  setNotification({ message: 'Tidak ada data valid ditemukan dalam file Excel.', type: 'error' });
+              }
 
           } catch (error: any) {
               setNotification({ message: `Gagal impor: ${error.message}`, type: 'error' });
+          } finally {
+              setIsImportConfirmOpen(false);
+              setPendingFile(null);
           }
       };
-      reader.readAsArrayBuffer(file);
-      e.target.value = '';
+      reader.readAsArrayBuffer(pendingFile);
   };
 
   const handlePrint = () => {
@@ -407,6 +429,17 @@ const BukuKasPembantu: React.FC<BukuKasPembantuProps> = ({ bkpData, onSubmit, on
             onConfirm={confirmDelete}
             title="Konfirmasi Hapus"
             message="Apakah Anda yakin ingin menghapus data transaksi ini? Tindakan ini tidak dapat dibatalkan."
+        />
+      </div>
+
+       {/* Import Confirmation Modal */}
+       <div className="no-print">
+        <ConfirmationModal
+            isOpen={isImportConfirmOpen}
+            onClose={() => { setIsImportConfirmOpen(false); setPendingFile(null); }}
+            onConfirm={confirmImport}
+            title="Konfirmasi Impor Data"
+            message="Apakah Anda yakin ingin mengimpor data ini? Tindakan ini akan MENGGANTIKAN semua data BKP yang ada saat ini. Pastikan Anda telah mem-backup data sebelumnya jika diperlukan."
         />
       </div>
     </div>

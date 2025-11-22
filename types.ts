@@ -76,5 +76,6 @@ export interface BudgetItem {
   kode: string;
   uraian: string;
   jumlah: number;
-  type: 'pendapatan' | 'belanja';
+  // Updated type definition to split belanja-program into Tri Hita Karana concepts
+  type: 'pendapatan' | 'belanja-rutin-insentif' | 'belanja-rutin-operasional' | 'belanja-program-parhyangan' | 'belanja-program-pawongan' | 'belanja-program-palemahan';
 }

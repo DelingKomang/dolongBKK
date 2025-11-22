@@ -12,6 +12,7 @@ import BukuBesar from './pages/BukuBesar';
 import Rekonsiliasi from './pages/Rekonsiliasi';
 import LaporanRekonsiliasiAkhir from './pages/LaporanRekonsiliasiAkhir';
 import SaldoAkhir from './pages/SaldoAkhir';
+import Anggaran from './pages/Anggaran';
 import { SIDEBAR_MENU } from './constants';
 import { getInitialBkuData, getInitialBkpData, getInitialJuData, getInitialBudgetItems } from './hooks/useMockData';
 import type { BkuData, BkpData, JuDisplayRow, BudgetItem } from './types';
@@ -46,14 +47,107 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
   
-  const handleLogin = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoggedIn(true);
-      setIsLoading(false);
-    }, 1500);
+  const handleLogin = async (email: string, password: string) => {
+    // Simulate API Call
+    return new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+            if(email && password) {
+                setIsLoggedIn(true);
+                resolve();
+            } else {
+                reject(new Error("Kredensial tidak valid"));
+            }
+        }, 1500);
+    });
+  };
+
+  const handleRegister = async (email: string, password: string) => {
+      // Simulate API Call
+      return new Promise<void>((resolve) => {
+          setTimeout(() => {
+              // For demo, just resolve successfully. User still needs to login.
+              resolve();
+          }, 1500);
+      });
   };
   
+  // --- HELPER: Generate Jurnal Umum Rows ---
+  const generateJuRows = (transaction: Omit<BkuData, 'id' | 'saldo'> | BkuData): JuDisplayRow[] => {
+      const date = new Date(transaction.tanggal);
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      
+      const KODE_KAS = '1.1.1.01'; // Default Cash Account Code
+      const URAIAN_KAS = 'Kas di Bendahara Desa';
+
+      const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      const juId = `JU-${month}${day}-${randomSuffix}`;
+
+      if (transaction.penerimaan > 0) {
+          // Logic Penerimaan: Debet Kas, Kredit Pendapatan
+          return [
+              {
+                  rowId: `${juId}-1`,
+                  idTransaksi: juId,
+                  date: transaction.tanggal,
+                  kodeRekening: KODE_KAS,
+                  uraian: URAIAN_KAS,
+                  debet: transaction.penerimaan,
+                  kredit: 0,
+                  rowType: 'debet'
+              },
+              {
+                  rowId: `${juId}-2`,
+                  idTransaksi: juId,
+                  kodeRekening: transaction.kode,
+                  uraian: transaction.uraian,
+                  debet: 0,
+                  kredit: transaction.penerimaan,
+                  rowType: 'kredit'
+              },
+              {
+                  rowId: `${juId}-3`,
+                  idTransaksi: juId,
+                  uraian: `(Posting Otomatis: ${transaction.uraian})`,
+                  debet: 0,
+                  kredit: 0,
+                  rowType: 'memo'
+              }
+          ];
+      } else {
+          // Logic Pengeluaran: Debet Belanja, Kredit Kas
+          return [
+              {
+                  rowId: `${juId}-1`,
+                  idTransaksi: juId,
+                  date: transaction.tanggal,
+                  kodeRekening: transaction.kode,
+                  uraian: transaction.uraian,
+                  debet: transaction.pengeluaran,
+                  kredit: 0,
+                  rowType: 'debet'
+              },
+              {
+                  rowId: `${juId}-2`,
+                  idTransaksi: juId,
+                  kodeRekening: KODE_KAS,
+                  uraian: URAIAN_KAS,
+                  debet: 0,
+                  kredit: transaction.pengeluaran,
+                  rowType: 'kredit'
+              },
+              {
+                  rowId: `${juId}-3`,
+                  idTransaksi: juId,
+                  uraian: `(Posting Otomatis: ${transaction.uraian})`,
+                  debet: 0,
+                  kredit: 0,
+                  rowType: 'memo'
+              }
+          ];
+      }
+  };
+
   // --- BKU LOGIC ---
   const recalculateBkuSaldo = (data: Omit<BkuData, 'saldo'>[]): BkuData[] => {
       const sortedData = [...data].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
@@ -87,82 +181,19 @@ const App: React.FC = () => {
       // --- AUTOMATION: POST TO JURNAL UMUM ---
       // Only automate for NEW transactions to avoid duplicating journals on edits
       if (!id) {
-          const date = new Date(formData.tanggal);
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          const juId = `JU-${month}${day}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
-          
-          const KODE_KAS = '1.1.1.01'; // Default Cash Account Code
-          const URAIAN_KAS = 'Kas di Bendahara Desa';
-
-          let newJuRows: JuDisplayRow[] = [];
-
-          if (formData.penerimaan > 0) {
-              // Logic Penerimaan: Debet Kas, Kredit Pendapatan
-              newJuRows = [
-                  {
-                      rowId: `${juId}-1`,
-                      idTransaksi: juId,
-                      date: formData.tanggal,
-                      kodeRekening: KODE_KAS,
-                      uraian: URAIAN_KAS,
-                      debet: formData.penerimaan,
-                      kredit: 0,
-                      rowType: 'debet'
-                  },
-                  {
-                      rowId: `${juId}-2`,
-                      idTransaksi: juId,
-                      kodeRekening: formData.kode,
-                      uraian: formData.uraian,
-                      debet: 0,
-                      kredit: formData.penerimaan,
-                      rowType: 'kredit'
-                  },
-                  {
-                      rowId: `${juId}-3`,
-                      idTransaksi: juId,
-                      uraian: `(Posting Otomatis: ${formData.uraian})`,
-                      debet: 0,
-                      kredit: 0,
-                      rowType: 'memo'
-                  }
-              ];
-          } else {
-              // Logic Pengeluaran: Debet Belanja, Kredit Kas
-              newJuRows = [
-                  {
-                      rowId: `${juId}-1`,
-                      idTransaksi: juId,
-                      date: formData.tanggal,
-                      kodeRekening: formData.kode,
-                      uraian: formData.uraian,
-                      debet: formData.pengeluaran,
-                      kredit: 0,
-                      rowType: 'debet'
-                  },
-                  {
-                      rowId: `${juId}-2`,
-                      idTransaksi: juId,
-                      kodeRekening: KODE_KAS,
-                      uraian: URAIAN_KAS,
-                      debet: 0,
-                      kredit: formData.pengeluaran,
-                      rowType: 'kredit'
-                  },
-                  {
-                      rowId: `${juId}-3`,
-                      idTransaksi: juId,
-                      uraian: `(Posting Otomatis: ${formData.uraian})`,
-                      debet: 0,
-                      kredit: 0,
-                      rowType: 'memo'
-                  }
-              ];
-          }
-
+          const newJuRows = generateJuRows(formData);
           setJuData(prevJu => [...prevJu, ...newJuRows]);
       }
+  };
+
+  const handleBkuReplace = (newData: BkuData[]) => {
+      const calculatedData = recalculateBkuSaldo(newData);
+      setBkuData(calculatedData);
+      
+      // Generate JU for all imported items
+      // We assume a replace action clears existing JU derived from BKU and repopulates it
+      const allNewJuRows = calculatedData.flatMap(item => generateJuRows(item));
+      setJuData(allNewJuRows);
   };
 
   // --- BKP LOGIC ---
@@ -196,9 +227,18 @@ const App: React.FC = () => {
       });
   };
 
+  const handleBkpReplace = (newData: BkpData[]) => {
+      setBkpData(recalculateBkpSaldo(newData));
+  };
+
 
   const renderPage = () => {
     switch (activePage) {
+      case 'Anggaran':
+        return <Anggaran 
+                  budgetItems={budgetItems} 
+                  setBudgetItems={setBudgetItems} 
+               />;
       case 'Dashboard':
         return <Dashboard bkuData={bkuData} />;
       case 'Buku Kas Umum':
@@ -206,12 +246,14 @@ const App: React.FC = () => {
                   bkuData={bkuData}
                   onSubmit={handleBkuSubmit}
                   onDelete={handleBkuDelete}
+                  onReplace={handleBkuReplace}
                 />;
       case 'Buku Kas Pembantu':
         return <BukuKasPembantu
                   bkpData={bkpData}
                   onSubmit={handleBkpSubmit}
                   onDelete={handleBkpDelete}
+                  onReplace={handleBkpReplace}
                />;
       case 'Jurnal Umum':
         return <JurnalUmum entries={juData} setEntries={setJuData} />;
@@ -219,9 +261,11 @@ const App: React.FC = () => {
         return <BukuBesar 
                   entries={juData} 
                   bkuData={bkuData}
+                  budgetItems={budgetItems}
                   onSubmit={handleBkuSubmit}
                   onBkpSubmit={handleBkpSubmit} 
                   onDelete={handleBkuDelete}
+                  onReplaceBku={handleBkuReplace}
                />;
       case 'Saldo Akhir':
         return <SaldoAkhir 
@@ -237,7 +281,6 @@ const App: React.FC = () => {
         return <LaporanRekonsiliasiAkhir
                   bkuTransactions={bkuData}
                   budgetItems={budgetItems}
-                  setBudgetItems={setBudgetItems}
                />;
       default:
         return <PlaceholderPage title={activePage} />;
@@ -245,11 +288,14 @@ const App: React.FC = () => {
   };
 
   if (!isLoggedIn) {
-    return <SplashScreen onLogin={handleLogin} isLoading={isLoading} />;
+    return <SplashScreen onLogin={handleLogin} onRegister={handleRegister} isLoading={isLoading} />;
   }
 
   if (!isDisclaimerAccepted) {
-    return <DisclaimerPage onContinue={() => setIsDisclaimerAccepted(true)} />;
+    return <DisclaimerPage onContinue={() => {
+        setIsDisclaimerAccepted(true);
+        setActivePage('Anggaran'); // Go to Anggaran after disclaimer
+    }} />;
   }
 
   return (

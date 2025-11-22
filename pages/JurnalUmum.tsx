@@ -3,6 +3,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import type { JuDisplayRow } from '../types';
 import { numberToWords, formatDate } from '../utils/formatter';
 import Modal from '../components/shared/Modal';
+import ConfirmationModal from '../components/shared/ConfirmationModal';
 import Spinner from '../components/shared/Spinner';
 import Notification from '../components/shared/Notification';
 import { Plus, Search, ChevronLeft, ChevronRight, Upload, Download, Printer } from 'lucide-react';
@@ -29,6 +30,10 @@ const JurnalUmum: React.FC<JurnalUmumProps> = ({ entries, setEntries }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [isModalOpen, setModalOpen] = useState(false);
     const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+    
+    // Import state
+    const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+    const [pendingFile, setPendingFile] = useState<File | null>(null);
     const importFileRef = useRef<HTMLInputElement>(null);
     
     // Form State
@@ -138,14 +143,21 @@ const JurnalUmum: React.FC<JurnalUmumProps> = ({ entries, setEntries }) => {
         setNotification({ message: 'Data Jurnal berhasil diekspor.', type: 'success' });
     };
 
-    const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            setPendingFile(file);
+            setIsImportConfirmOpen(true);
+        }
+        event.target.value = '';
+    };
+
+    const confirmImport = () => {
+         if (!pendingFile) return;
          if (typeof XLSX === 'undefined') {
              setNotification({ message: 'Library Excel belum dimuat.', type: 'error' });
              return;
         }
-
-        const file = event.target.files?.[0];
-        if (!file) return;
 
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -167,7 +179,7 @@ const JurnalUmum: React.FC<JurnalUmumProps> = ({ entries, setEntries }) => {
                     const dateStr = date.toISOString().split('T')[0];
                     const month = String(date.getMonth() + 1).padStart(2, '0');
                     const day = String(date.getDate()).padStart(2, '0');
-                    const dailyCount = entries.filter(tx => tx.date === dateStr && tx.rowType === 'debet').length + (index + 1);
+                    const dailyCount = (index + 1); // Reset counter logic if replacing
                     const idTransaksi = `JU-${month}${day}-${String(dailyCount).padStart(3, '0')}`;
                     const amount = Number(row['Jumlah']);
                     const uraianDebet = String(row['Uraian Debet']);
@@ -177,15 +189,21 @@ const JurnalUmum: React.FC<JurnalUmumProps> = ({ entries, setEntries }) => {
                     newRows.push({ rowId: `${idTransaksi}-3`, idTransaksi, uraian: `(Pencatatan ${uraianDebet})`, debet: 0, kredit: 0, rowType: 'memo' });
                 });
                 
-                setEntries([...entries, ...newRows]);
-                setNotification({ message: `${json.length} jurnal berhasil diimpor.`, type: 'success' });
+                if(newRows.length > 0) {
+                     setEntries(newRows);
+                     setNotification({ message: `${json.length} jurnal berhasil diimpor dan menggantikan data lama.`, type: 'success' });
+                } else {
+                     setNotification({ message: 'Tidak ada data valid ditemukan.', type: 'error' });
+                }
 
             } catch (error: any) {
                 setNotification({ message: `Gagal mengimpor file: ${error.message}`, type: 'error' });
+            } finally {
+                setIsImportConfirmOpen(false);
+                setPendingFile(null);
             }
         };
-        reader.readAsArrayBuffer(file);
-        event.target.value = '';
+        reader.readAsArrayBuffer(pendingFile);
     };
 
     const handlePrint = () => {
@@ -293,7 +311,7 @@ const JurnalUmum: React.FC<JurnalUmumProps> = ({ entries, setEntries }) => {
                     <Notification {...notification} onClose={() => setNotification(null)} />
                 </div>
             )}
-            <input type="file" ref={importFileRef} onChange={handleImport} accept=".xlsx, .xls" className="hidden" />
+            <input type="file" ref={importFileRef} onChange={handleFileChange} accept=".xlsx, .xls" className="hidden" />
 
             {/* Print Only Header */}
             <div className="hidden print:block text-center mb-6 text-black border-b border-black pb-4">
@@ -452,6 +470,17 @@ const JurnalUmum: React.FC<JurnalUmumProps> = ({ entries, setEntries }) => {
                         </div>
                     </form>
                 </Modal>
+            </div>
+
+             {/* Import Confirmation Modal */}
+            <div className="no-print">
+                <ConfirmationModal
+                    isOpen={isImportConfirmOpen}
+                    onClose={() => { setIsImportConfirmOpen(false); setPendingFile(null); }}
+                    onConfirm={confirmImport}
+                    title="Konfirmasi Impor Data"
+                    message="Apakah Anda yakin ingin mengimpor data ini? Tindakan ini akan MENGGANTIKAN semua data Jurnal Umum yang ada saat ini. Pastikan Anda telah mem-backup data sebelumnya jika diperlukan."
+                />
             </div>
         </div>
     );

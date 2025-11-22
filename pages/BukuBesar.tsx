@@ -1,19 +1,23 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import type { JuDisplayRow, BkuData, BkpData } from '../types';
+import type { JuDisplayRow, BkuData, BkpData, BudgetItem } from '../types';
 import { formatCurrency, formatDate, numberToWords } from '../utils/formatter';
-import { Search, Plus, Trash2, Save, ArrowDownLeft, ArrowUpRight, Download, FileSpreadsheet, Upload, BookOpen, Printer } from 'lucide-react';
+import { Search, Plus, Trash2, Save, ArrowDownLeft, ArrowUpRight, Download, Upload, BookOpen, Printer } from 'lucide-react';
 import Notification from '../components/shared/Notification';
 import Modal from '../components/shared/Modal';
+import ConfirmationModal from '../components/shared/ConfirmationModal';
+import { REFERENSI_REKENING } from '../constants';
 
 declare const XLSX: any;
 
 interface BukuBesarProps {
     entries: JuDisplayRow[];
     bkuData: BkuData[];
+    budgetItems: BudgetItem[];
     onSubmit: (formData: Omit<BkuData, 'id' | 'saldo'>, id?: string) => void;
     onBkpSubmit: (formData: Omit<BkpData, 'id' | 'saldo'>) => void;
     onDelete: (id: string) => void;
+    onReplaceBku: (data: BkuData[]) => void;
 }
 
 // Helper type for pending BKU transaction waiting for Receipt/Note input
@@ -31,33 +35,7 @@ interface NotaItem {
     total: number;
 }
 
-// Standard Reference for Village Account Codes (Permendagri 20)
-const REFERENSI_REKENING = [
-    { code: '022.22.1', name: 'Bantuan Keuangan dari APBD Provinsi' },
-    { code: '022.22.2', name: 'Bantuan Keuangan dari APBD Kab/Kota' },
-    { code: '5.1.1.01', name: 'Insentif Kelian Adat' },
-    { code: '5.1.1.02', name: 'Insentif Prajuru Adat' },
-    { code: '5.1.1.03', name: 'Insentif Admin Adat' },
-    { code: '5.1.1.04', name: 'Jaminan Sosial Prajuru Adat' },
-    { code: '5.1.2.01', name: 'Belanja Alat Tulis Kantor (ATK)' },
-    { code: '5.1.2.02', name: 'Belanja Benda Pos & Materai' },
-    { code: '5.1.2.03', name: 'Belanja Alat Listrik & Elektronik' },
-    { code: '5.1.2.04', name: 'Belanja Peralatan Kebersihan' },
-    { code: '5.1.2.05', name: 'Belanja Cetak & Penggandaan' },
-    { code: '5.1.2.06', name: 'Belanja Makan & Minum Rapat' },
-    { code: '5.1.2.07', name: 'Belanja Pakaian Dinas & Atribut' },
-    { code: '5.1.2.08', name: 'Belanja Perjalanan Dinas' },
-    { code: '5.1.2.09', name: 'Belanja Pemeliharaan Gedung & Kantor' },
-    { code: '5.1.3.01', name: 'Belanja Pecalang' },
-    { code: '5.1.3.02', name: 'Belanja Pakis' },
-    { code: '5.1.3.03', name: 'Belanja Modal Gedung & Bangunan' },
-    { code: '5.1.3.04', name: 'Belanja Modal Jalan, Irigasi & Jaringan' },
-    { code: '5.1.4.01', name: 'Belanja Tak Terduga' },
-    { code: '6.1.1.01', name: 'Penerimaan Pembiayaan' },
-    { code: '6.2.1.01', name: 'Pengeluaran Pembiayaan' }
-];
-
-const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkpSubmit, onDelete }) => {
+const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, budgetItems, onSubmit, onBkpSubmit, onDelete, onReplaceBku }) => {
     // --- LEDGER VIEW STATE ---
     const [selectedAccount, setSelectedAccount] = useState<string>('');
     const [ledgerSearchTerm, setLedgerSearchTerm] = useState('');
@@ -89,13 +67,17 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
         { id: '1', itemName: '', qty: 1, price: 0, total: 0 }
     ]);
 
+    // Import State
+    const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+    const [pendingFile, setPendingFile] = useState<File | null>(null);
+
     // --- DERIVED DATA ---
 
     // Combine static standard codes with any custom codes used in history
     const availableCodes = useMemo(() => {
         const map = new Map<string, string>();
         
-        // 1. Add Standard Codes
+        // 1. Add Standard Codes from Constants
         REFERENSI_REKENING.forEach(ref => {
             map.set(ref.code, ref.name);
         });
@@ -121,11 +103,17 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
         return found ? found.name : '';
     }, [formKode, availableCodes]);
 
+    // Use budget items for categories (Prioritize Budget Items)
     const availableCategories = useMemo(() => {
         const cats = new Set<string>();
-        bkuData.forEach(b => b.kategori && cats.add(b.kategori));
+        
+        // Primary Source: Budget Items
+        budgetItems.forEach(item => {
+            if(item.uraian) cats.add(item.uraian);
+        });
+
         return Array.from(cats).sort();
-    }, [bkuData]);
+    }, [budgetItems]);
 
     const generatedUraian = useMemo(() => {
         if (!formDescManual) return '...';
@@ -146,6 +134,27 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
         setFormAmount('');
         setIsInputModalOpen(true);
     }
+
+    // Handle Category Change to Auto-Populate Code
+    const handleKategoriChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setFormKategori(val);
+
+        // Find matching budget item to get the code
+        const budgetMatch = budgetItems.find(item => item.uraian.trim().toLowerCase() === val.trim().toLowerCase());
+        
+        if (budgetMatch) {
+            const code = budgetMatch.kode;
+            // Find description for the code to format it like the dropdown (Code - Name)
+            const codeDescMatch = availableCodes.find(c => c.code === code);
+            
+            if (codeDescMatch) {
+                setFormKode(`${code} - ${codeDescMatch.name}`);
+            } else {
+                setFormKode(code);
+            }
+        }
+    };
 
     // 1. MAIN FORM SUBMIT (PREPARE ONLY)
     const handleBkuSubmit = (e: React.FormEvent) => {
@@ -208,9 +217,6 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
         };
         onBkpSubmit(bkpEntry);
 
-        // 3. Export Excel (Disabled auto download)
-        // exportKwitansiToExcel(bkpEntry, pendingTx.penerimaan);
-
         setNotification({ message: 'Data berhasil disimpan ke BKU & BKP.', type: 'success' });
         setIsKwitansiModalOpen(false);
         setPendingTx(null);
@@ -223,9 +229,12 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
         const totalNota = notaItems.reduce((sum, item) => sum + item.total, 0);
         
         // Validation: Sum must match BKU amount
-        if (totalNota !== pendingTx.pengeluaran) {
+        // Allow slight tolerance (e.g. 2 rupiah) for floating point drift
+        const diff = Math.round(totalNota) - Math.round(pendingTx.pengeluaran);
+        
+        if (Math.abs(diff) > 2) {
             setNotification({ 
-                message: `Total Nota (${formatCurrency(totalNota)}) tidak sesuai dengan input awal (${formatCurrency(pendingTx.pengeluaran)}).`, 
+                message: `Total Nota (${formatCurrency(totalNota)}) tidak sesuai dengan input awal (${formatCurrency(pendingTx.pengeluaran)}). Selisih: ${diff}`, 
                 type: 'error' 
             });
             return;
@@ -235,7 +244,7 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
         onSubmit(pendingTx);
 
         // 2. Save EACH item to BKP (Detailed)
-        // Using for...of to ensure clean iteration, though sync calls rely on App.tsx fixing race conditions
+        // Using for...of to ensure clean iteration
         for (const item of notaItems) {
             if(item.itemName && item.total > 0) {
                  const bkpEntry: Omit<BkpData, 'id' | 'saldo'> = {
@@ -251,9 +260,6 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
             }
         }
 
-        // 3. Export Excel (Disabled auto download)
-        // exportNotaToExcel(notaItems, pendingTx, notaBukti);
-
         setNotification({ message: 'Semua rincian Nota berhasil disimpan ke BKP & BKU.', type: 'success' });
         setIsNotaModalOpen(false);
         setPendingTx(null);
@@ -261,50 +267,6 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
 
     const handlePrint = () => {
         window.print();
-    };
-
-    // --- EXCEL FUNCTIONS (DOCUMENTS) ---
-
-    const exportKwitansiToExcel = (data: any, amount: number) => {
-        if (typeof XLSX === 'undefined') return;
-        const wb = XLSX.utils.book_new();
-        const wsData = [
-            ["KWITANSI TANDA TERIMA"],
-            [""],
-            ["No. Bukti", data.bukti],
-            ["Tanggal", formatDate(data.tanggal)],
-            ["Telah Terima Dari", pendingTx?.targetName],
-            ["Uang Sejumlah", formatCurrency(amount)],
-            ["Terbilang", numberToWords(amount) + " Rupiah"],
-            ["Untuk Pembayaran", kwitansiGuna],
-            [""],
-            ["", "", "Penerima"],
-            ["", "", ""],
-            ["", "", "Bendahara Desa"]
-        ];
-        const ws = XLSX.utils.aoa_to_sheet(wsData);
-        XLSX.utils.book_append_sheet(wb, ws, "Kwitansi");
-        XLSX.writeFile(wb, `Kwitansi_${data.bukti}.xlsx`);
-    };
-
-    const exportNotaToExcel = (items: NotaItem[], tx: PendingTransaction, bukti: string) => {
-        if (typeof XLSX === 'undefined') return;
-        const wb = XLSX.utils.book_new();
-        const wsData = [
-            ["NOTA BELANJA"],
-            ["No. Bukti", bukti],
-            ["Tanggal", formatDate(tx.tanggal)],
-            ["Kepada", tx.targetName],
-            [""],
-            ["No", "Nama Barang", "Qty", "Harga Satuan", "Jumlah"],
-            ...items.map((item, idx) => [
-                idx + 1, item.itemName, item.qty, item.price, item.total
-            ]),
-            ["", "", "", "TOTAL", items.reduce((a,b) => a + b.total, 0)]
-        ];
-        const ws = XLSX.utils.aoa_to_sheet(wsData);
-        XLSX.utils.book_append_sheet(wb, ws, "Nota");
-        XLSX.writeFile(wb, `Nota_${bukti || 'Draft'}.xlsx`);
     };
     
     // --- EXCEL EXPORT / IMPORT (MAIN DATA) ---
@@ -336,53 +298,69 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
     
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (!file) return;
-
-      if (typeof XLSX === 'undefined') {
-          setNotification({ message: 'Library Excel belum dimuat.', type: 'error' });
-          return;
+      if (file) {
+          setPendingFile(file);
+          setIsImportConfirmOpen(true);
       }
-
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-          try {
-              const data = new Uint8Array(evt.target?.result as ArrayBuffer);
-              const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-              const sheetName = workbook.SheetNames[0];
-              const worksheet = workbook.Sheets[sheetName];
-              const jsonData = XLSX.utils.sheet_to_json(worksheet);
-
-              let count = 0;
-              jsonData.forEach((row: any) => {
-                  if (row['Tanggal'] && row['Uraian']) {
-                      let dateStr = '';
-                      if (row['Tanggal'] instanceof Date) {
-                          dateStr = row['Tanggal'].toISOString().split('T')[0];
-                      } else {
-                           const d = new Date(row['Tanggal']);
-                           if (!isNaN(d.getTime())) dateStr = d.toISOString().split('T')[0];
-                      }
-
-                      const newEntry: Omit<BkuData, 'id' | 'saldo'> = {
-                          tanggal: dateStr || new Date().toISOString().split('T')[0],
-                          kode: row['Kode'] || '00.00',
-                          kategori: row['Kategori'] || '',
-                          uraian: row['Uraian'] || '',
-                          penerimaan: Number(row['Penerimaan']) || 0,
-                          pengeluaran: Number(row['Pengeluaran']) || 0
-                      };
-                      onSubmit(newEntry);
-                      count++;
-                  }
-              });
-              setNotification({ message: `${count} data berhasil diimpor ke BKU.`, type: 'success' });
-
-          } catch (error: any) {
-              setNotification({ message: `Gagal impor: ${error.message}`, type: 'error' });
-          }
-      };
-      reader.readAsArrayBuffer(file);
       e.target.value = '';
+    };
+
+    const confirmImport = () => {
+        if (!pendingFile) return;
+        if (typeof XLSX === 'undefined') {
+            setNotification({ message: 'Library Excel belum dimuat.', type: 'error' });
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                const newEntries: BkuData[] = [];
+                jsonData.forEach((row: any) => {
+                    if (row['Tanggal'] && row['Uraian']) {
+                        let dateStr = '';
+                        if (row['Tanggal'] instanceof Date) {
+                            dateStr = row['Tanggal'].toISOString().split('T')[0];
+                        } else {
+                            const d = new Date(row['Tanggal']);
+                            if (!isNaN(d.getTime())) dateStr = d.toISOString().split('T')[0];
+                        }
+
+                        const newEntry: BkuData = {
+                            id: `bku-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                            tanggal: dateStr || new Date().toISOString().split('T')[0],
+                            kode: row['Kode'] || '00.00',
+                            kategori: row['Kategori'] || '',
+                            uraian: row['Uraian'] || '',
+                            penerimaan: Number(row['Penerimaan']) || 0,
+                            pengeluaran: Number(row['Pengeluaran']) || 0,
+                            saldo: 0
+                        };
+                        newEntries.push(newEntry);
+                    }
+                });
+
+                if(newEntries.length > 0) {
+                    onReplaceBku(newEntries);
+                    setNotification({ message: `${newEntries.length} data berhasil diimpor dan menggantikan data BKU lama.`, type: 'success' });
+                } else {
+                    setNotification({ message: 'Tidak ada data valid ditemukan.', type: 'error' });
+                }
+
+            } catch (error: any) {
+                setNotification({ message: `Gagal impor: ${error.message}`, type: 'error' });
+            } finally {
+                setIsImportConfirmOpen(false);
+                setPendingFile(null);
+            }
+        };
+        reader.readAsArrayBuffer(pendingFile);
     };
 
     // --- NOTA ITEM HELPERS ---
@@ -410,6 +388,8 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
     };
 
     const notaTotal = notaItems.reduce((acc, item) => acc + item.total, 0);
+    // Calculate difference with slight tolerance check used in Render
+    const notaDiff = Math.round(notaTotal) - Math.round(pendingTx?.pengeluaran || 0);
 
 
     // --- LEDGER VIEW LOGIC (Existing) ---
@@ -640,18 +620,21 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-2">Kategori</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">Kategori (Dari Anggaran)</label>
                                 <input 
                                     list="kategori-list-modal"
                                     value={formKategori}
-                                    onChange={(e) => setFormKategori(e.target.value)}
+                                    onChange={handleKategoriChange}
                                     className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                                    placeholder="Pilih atau ketik kategori..."
+                                    placeholder="Pilih kategori dari Anggaran..."
                                     required
                                 />
                                 <datalist id="kategori-list-modal">
                                     {availableCategories.map(cat => <option key={cat} value={cat} />)}
                                 </datalist>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Pilih kategori yang sesuai dengan Anggaran agar realisasi tercatat otomatis di LRA.
+                                </p>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Kode Rekening (Disimpan ke BKU saja)</label>
@@ -922,8 +905,8 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                             </button>
                             
                             {/* Validation Message */}
-                            <div className={`text-sm px-3 py-1 rounded font-medium ${notaTotal === (pendingTx?.pengeluaran || 0) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                {notaTotal === (pendingTx?.pengeluaran || 0) 
+                            <div className={`text-sm px-3 py-1 rounded font-medium ${Math.abs(notaDiff) <= 2 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {Math.abs(notaDiff) <= 2 
                                     ? "Total Sesuai dengan BKU" 
                                     : `Selisih: ${formatCurrency((pendingTx?.pengeluaran || 0) - notaTotal)} (Target: ${formatCurrency(pendingTx?.pengeluaran)})`
                                 }
@@ -941,8 +924,8 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                         </button>
                         <button 
                             onClick={handleNotaSubmit}
-                            className={`flex items-center gap-2 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-all ${notaTotal === (pendingTx?.pengeluaran || 0) ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-500 cursor-not-allowed opacity-50'}`}
-                            disabled={notaTotal !== (pendingTx?.pengeluaran || 0)}
+                            className={`flex items-center gap-2 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-all ${Math.abs(notaDiff) <= 2 ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-500 cursor-not-allowed opacity-50'}`}
+                            disabled={Math.abs(notaDiff) > 2}
                         >
                             <Save size={18} />
                             <span>Simpan</span>
@@ -1036,6 +1019,17 @@ const BukuBesar: React.FC<BukuBesarProps> = ({ entries, bkuData, onSubmit, onBkp
                         Pilih Kode Rekening untuk melihat mutasi.
                     </div>
                 )}
+            </div>
+
+             {/* Import Confirmation Modal */}
+             <div className="no-print">
+                <ConfirmationModal
+                    isOpen={isImportConfirmOpen}
+                    onClose={() => { setIsImportConfirmOpen(false); setPendingFile(null); }}
+                    onConfirm={confirmImport}
+                    title="Konfirmasi Impor Data"
+                    message="Apakah Anda yakin ingin mengimpor data ini? Tindakan ini akan MENGGANTIKAN semua data BKU yang ada saat ini. Pastikan Anda telah mem-backup data sebelumnya jika diperlukan."
+                />
             </div>
         </div>
     );

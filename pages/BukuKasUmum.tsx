@@ -14,16 +14,23 @@ interface BukuKasUmumProps {
   bkuData: BkuData[];
   onSubmit: (formData: Omit<BkuData, 'id' | 'saldo'>, id?: string) => void;
   onDelete: (id: string) => void;
+  onReplace: (data: BkuData[]) => void;
 }
 
-const BukuKasUmum: React.FC<BukuKasUmumProps> = ({ bkuData, onSubmit, onDelete }) => {
+const BukuKasUmum: React.FC<BukuKasUmumProps> = ({ bkuData, onSubmit, onDelete, onReplace }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<BkuData | null>(null);
+  
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  
+  // Import state
+  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -42,10 +49,6 @@ const BukuKasUmum: React.FC<BukuKasUmumProps> = ({ bkuData, onSubmit, onDelete }
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   
   const paginatedData = useMemo(() => {
-    // When printing, we might want to show all data or just current page. 
-    // Usually BKU reports print the whole log or filtered log.
-    // For this implementation, we keep pagination for screen, but if needed for print we'd need to disable pagination.
-    // However, to keep consistent with UI, we print what's visible or maybe let's just print the current view.
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     return filteredData.slice(startIndex, endIndex);
@@ -124,7 +127,15 @@ const BukuKasUmum: React.FC<BukuKasUmumProps> = ({ bkuData, onSubmit, onDelete }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (!file) return;
+      if (file) {
+          setPendingFile(file);
+          setIsImportConfirmOpen(true);
+      }
+      e.target.value = '';
+  };
+
+  const confirmImport = () => {
+      if (!pendingFile) return;
 
       if (typeof XLSX === 'undefined') {
           setNotification({ message: 'Library Excel belum dimuat.', type: 'error' });
@@ -140,7 +151,7 @@ const BukuKasUmum: React.FC<BukuKasUmumProps> = ({ bkuData, onSubmit, onDelete }
               const worksheet = workbook.Sheets[sheetName];
               const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-              let count = 0;
+              const newEntries: BkuData[] = [];
               jsonData.forEach((row: any) => {
                   // Basic validation
                   if (row['Tanggal'] && row['Uraian']) {
@@ -153,26 +164,35 @@ const BukuKasUmum: React.FC<BukuKasUmumProps> = ({ bkuData, onSubmit, onDelete }
                            if (!isNaN(d.getTime())) dateStr = d.toISOString().split('T')[0];
                       }
 
-                      const newEntry: Omit<BkuData, 'id' | 'saldo'> = {
+                      const newEntry: BkuData = {
+                          id: `bku-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                           tanggal: dateStr || new Date().toISOString().split('T')[0],
                           kode: row['Kode'] || '00.00',
                           kategori: row['Kategori'] || '',
                           uraian: row['Uraian'] || '',
                           penerimaan: Number(row['Penerimaan']) || 0,
-                          pengeluaran: Number(row['Pengeluaran']) || 0
+                          pengeluaran: Number(row['Pengeluaran']) || 0,
+                          saldo: 0 // Will be recalculated
                       };
-                      onSubmit(newEntry);
-                      count++;
+                      newEntries.push(newEntry);
                   }
               });
-              setNotification({ message: `${count} data berhasil diimpor ke BKU.`, type: 'success' });
+              
+              if(newEntries.length > 0) {
+                  onReplace(newEntries);
+                  setNotification({ message: `${newEntries.length} data berhasil diimpor dan menggantikan data lama.`, type: 'success' });
+              } else {
+                  setNotification({ message: 'Tidak ada data valid ditemukan dalam file Excel.', type: 'error' });
+              }
 
           } catch (error: any) {
               setNotification({ message: `Gagal impor: ${error.message}`, type: 'error' });
+          } finally {
+              setIsImportConfirmOpen(false);
+              setPendingFile(null);
           }
       };
-      reader.readAsArrayBuffer(file);
-      e.target.value = '';
+      reader.readAsArrayBuffer(pendingFile);
   };
 
   const handlePrint = () => {
@@ -372,6 +392,17 @@ const BukuKasUmum: React.FC<BukuKasUmumProps> = ({ bkuData, onSubmit, onDelete }
             onConfirm={confirmDelete}
             title="Konfirmasi Hapus"
             message="Apakah Anda yakin ingin menghapus data transaksi ini? Tindakan ini tidak dapat dibatalkan."
+        />
+      </div>
+
+       {/* Import Confirmation Modal */}
+       <div className="no-print">
+        <ConfirmationModal
+            isOpen={isImportConfirmOpen}
+            onClose={() => { setIsImportConfirmOpen(false); setPendingFile(null); }}
+            onConfirm={confirmImport}
+            title="Konfirmasi Impor Data"
+            message="Apakah Anda yakin ingin mengimpor data ini? Tindakan ini akan MENGGANTIKAN semua data BKU yang ada saat ini. Pastikan Anda telah mem-backup data sebelumnya jika diperlukan."
         />
       </div>
     </div>
